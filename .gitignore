@@ -13,3 +13,8 @@ skills-lock.json
 /indexV2.html
 /indexV3.html
 /appsscript.json
+
+# Firebase Hosting
+.firebaserc
+firebase.json
+/y/
