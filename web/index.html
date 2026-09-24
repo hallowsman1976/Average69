@@ -26,10 +26,13 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbwWCJOUDZgSZj4KOY5detZE
 </script>
 
 <header class="bg-gradient-to-br from-emerald-600 to-teal-700 text-white pt-[max(1.25rem,env(safe-area-inset-top))] pb-16 px-4">
-  <div class="max-w-2xl mx-auto">
-    <p class="text-emerald-100 text-sm">สหกรณ์</p>
-    <h1 class="text-2xl font-semibold">เงินปันผลและเฉลี่ยคืน</h1>
-    <p id="who" class="text-emerald-50/90 text-sm mt-1"></p>
+  <div class="max-w-2xl mx-auto flex items-center gap-3">
+    <div id="avatar" class="shrink-0 w-14 h-14 rounded-full ring-2 ring-white/70 bg-white/20 overflow-hidden flex items-center justify-center text-xl font-semibold">👤</div>
+    <div class="min-w-0">
+      <p id="lineName" class="text-emerald-100 text-sm truncate">สหกรณ์</p>
+      <h1 class="text-2xl font-semibold leading-tight">เงินปันผลและเฉลี่ยคืน</h1>
+      <p id="who" class="text-emerald-50/90 text-sm mt-1"></p>
+    </div>
   </div>
 </header>
 
@@ -83,6 +86,7 @@ async function boot() {
     if (!DEMO) {
       await liff.init({ liffId: LIFF_ID });
       if (!liff.isLoggedIn()) { liff.login({ redirectUri: location.href }); return; }
+      loadProfile();
     }
     loading();
     state.init = await api('init');
@@ -94,6 +98,22 @@ async function boot() {
     await toastErr('เกิดข้อผิดพลาด', e && e.message);
     $app.innerHTML = card(`<button onclick="location.reload()" class="w-full rounded-xl bg-emerald-600 text-white py-3 font-medium">ลองใหม่</button>`);
   }
+}
+
+/* รูปและชื่อจาก LINE (แสดงผลอย่างเดียว ไม่ส่งไป backend; ต้องเปิด scope "profile" ใน LIFF) */
+async function loadProfile() {
+  try {
+    const p = await liff.getProfile();
+    document.getElementById('lineName').textContent = p.displayName;
+    if (p.pictureUrl) {
+      const img = new Image();
+      img.alt = p.displayName;
+      img.className = 'w-full h-full object-cover';
+      img.referrerPolicy = 'no-referrer';
+      img.onload = () => document.getElementById('avatar').replaceChildren(img);
+      img.src = p.pictureUrl;
+    }
+  } catch (e) { /* ไม่มี scope profile หรือโหลดไม่ได้ — ใช้ไอคอนเริ่มต้น */ }
 }
 
 const card = inner => `<div class="bg-white rounded-2xl shadow p-5 sm:p-6">${inner}</div>`;
