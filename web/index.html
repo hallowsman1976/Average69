@@ -41,6 +41,39 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbwWCJOUDZgSZj4KOY5detZE
 </main>
 
 <script>
+/* รายการสังกัดในฟอร์มลงทะเบียน — ต้องสะกดตรงกับคอลัมน์ "สังกัด" ในชีต (ระบบไม่สนช่องว่าง) */
+const OFFICES = [
+  'บำนาญ',
+  'พกส.รพ.หนองสูง',
+  'พิเศษ',
+  'รพ.คำชะอี',
+  'รพ.ดงหลวง',
+  'รพ.ดอนตาล',
+  'รพ.นิคมคำสร้อย',
+  'รพ.หนองสูง',
+  'รพ.หว้านใหญ่',
+  'สมทบ',
+  'สสจ.มุกดาหาร',
+  'สสอ.เมือง',
+  'อบจ.เมืองมุกดาหาร',
+  'อบจ.อ.คำชะอี',
+  'อบจ.อ.ดงหลวง',
+  'อบจ.อ.ดอนตาล',
+  'อบจ.อ.นิคมคำสร้อย',
+  'อบจ.อ.หนองสูง',
+  'อบจ.อ.หว้านใหญ่',
+  'บำนาญ อบจ.มุกดาหาร',
+  'พรก.สสจ.มุกดาหาร',
+  'พกส.รพ.นิคมคำสร้อย',
+  'พกส.รพ.ดงหลวง',
+  'พกส.รพ.คำชะอี',
+  'พกส.รพ.ดอนตาล',
+  'พกส.รพ.หว้านใหญ่',
+  'พรก.รพ.คำชะอี',
+  'พรก.รพ.นิคมคำสร้อย',
+  'พรก.รพ.หนองสูง'
+].sort((a, b) => a.localeCompare(b, 'th'));
+
 const DEMO = new URLSearchParams(location.search).has('demo');
 const $app = document.getElementById('app');
 const $who = document.getElementById('who');
@@ -140,7 +173,10 @@ function showRegister() {
       </label>
       <label class="block">
         <span class="text-sm font-medium">สังกัด</span>
-        <input id="f-office" required class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-emerald-500">
+        <select id="f-office" required class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
+          <option value="" disabled selected>-- เลือกสังกัด --</option>
+          ${OFFICES.map(o => `<option value="${esc(o)}">${esc(o)}</option>`).join('')}
+        </select>
       </label>
       ${bank}
       <button class="w-full rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-[.99] text-white py-3 font-medium transition">ลงทะเบียน</button>
