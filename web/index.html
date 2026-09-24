@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>เงินปันผลและเฉลี่ยคืน</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: { extend: { fontFamily: { sans: ['"Noto Sans Thai"', 'system-ui', 'sans-serif'] } } }
+    };
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+</head>
+<body class="font-sans bg-slate-100 text-slate-800 min-h-screen">
+
+<script>
+/* ============ ตั้งค่า (แก้ 2 ค่านี้เท่านั้น) ============ */
+const LIFF_ID = 'ใส่-LIFF-ID-ที่นี่';            // เช่น 1234567890-AbCdEfGh
+const API_URL = 'https://script.google.com/macros/s/AKfycbwWCJOUDZgSZj4KOY5detZEr2oFX10f-RaUXSxAIxdHVfFVjoPUlLHSEZaywYFvnUGJ/exec'; // ลงท้ายด้วย /exec
+/* ===================================================== */
+</script>
+
+<header class="bg-gradient-to-br from-emerald-600 to-teal-700 text-white pt-[max(1.25rem,env(safe-area-inset-top))] pb-16 px-4">
+  <div class="max-w-2xl mx-auto">
+    <p class="text-emerald-100 text-sm">สหกรณ์</p>
+    <h1 class="text-2xl font-semibold">เงินปันผลและเฉลี่ยคืน</h1>
+    <p id="who" class="text-emerald-50/90 text-sm mt-1"></p>
+  </div>
+</header>
+
+<main id="app" class="max-w-2xl mx-auto px-4 -mt-10 pb-[max(2rem,env(safe-area-inset-bottom))]">
+  <div class="bg-white rounded-2xl shadow p-8 text-center text-slate-500">กำลังโหลด...</div>
+</main>
+
+<script>
+const DEMO = new URLSearchParams(location.search).has('demo');
+const $app = document.getElementById('app');
+const $who = document.getElementById('who');
+const state = { init: null, year: null };
+
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const baht = n => Number(n).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/* ---------- SweetAlert helpers ---------- */
+const loading = (title = 'กำลังโหลด...') => Swal.fire({ title, allowOutsideClick: false, allowEscapeKey: false, didOpen: () => Swal.showLoading() });
+const toastOk = title => Swal.fire({ icon: 'success', title, confirmButtonText: 'ตกลง', confirmButtonColor: '#059669' });
+const toastErr = (title, text) => Swal.fire({ icon: 'error', title, text, confirmButtonText: 'ตกลง', confirmButtonColor: '#059669' });
+
+/* ---------- API ---------- */
+async function api(action, params = {}) {
+  if (DEMO) return demoApi(action, params);
+  const idToken = liff.getIDToken();
+  if (!idToken) { liff.login({ redirectUri: location.href }); throw new Error('login'); }
+  let res;
+  try {
+    // text/plain = "simple request" ไม่เกิด CORS preflight (Apps Script ตอบ OPTIONS ไม่ได้)
+    res = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action, idToken, ...params })
+    });
+  } catch (e) {
+    throw { code: 'NETWORK', message: 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาตรวจสอบอินเทอร์เน็ต' };
+  }
+  const data = await res.json().catch(() => ({ ok: false, code: 'SERVER_ERROR', message: 'ระบบขัดข้อง กรุณาลองใหม่อีกครั้ง' }));
+  if (data.ok) return data;
+  if (data.code === 'TOKEN_EXPIRED' || data.code === 'TOKEN_INVALID') {
+    await Swal.fire({ icon: 'info', title: 'กรุณาเข้าสู่ระบบใหม่', text: data.message, confirmButtonText: 'ตกลง', confirmButtonColor: '#059669' });
+    liff.logout();
+    liff.login({ redirectUri: location.href });
+  }
+  throw data;
+}
+
+/* ---------- Boot ---------- */
+async function boot() {
+  try {
+    if (!DEMO) {
+      await liff.init({ liffId: LIFF_ID });
+      if (!liff.isLoggedIn()) { liff.login({ redirectUri: location.href }); return; }
+    }
+    loading();
+    state.init = await api('init');
+    Swal.close();
+    state.init.registered ? await showMember() : showRegister();
+  } catch (e) {
+    if (e && e.message === 'login') return;
+    Swal.close();
+    await toastErr('เกิดข้อผิดพลาด', e && e.message);
+    $app.innerHTML = card(`<button onclick="location.reload()" class="w-full rounded-xl bg-emerald-600 text-white py-3 font-medium">ลองใหม่</button>`);
+  }
+}
+
+const card = inner => `<div class="bg-white rounded-2xl shadow p-5 sm:p-6">${inner}</div>`;
+
+/* ---------- Register ---------- */
+function showRegister() {
+  $who.textContent = 'ลงทะเบียนสมาชิกครั้งแรก';
+  const bank = state.init.requireBank ? `
+    <label class="block">
+      <span class="text-sm font-medium">เลขบัญชีธนาคาร 4 ตัวท้าย</span>
+      <input id="f-bank" inputmode="numeric" maxlength="4" class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-emerald-500" placeholder="เช่น 1234">
+    </label>` : '';
+  $app.innerHTML = card(`
+    <h2 class="text-lg font-semibold mb-1">ลงทะเบียนสมาชิก</h2>
+    <p class="text-sm text-slate-500 mb-4">กรอกข้อมูลให้ตรงกับทะเบียนสมาชิกเพื่อผูกกับบัญชี LINE นี้ (ทำครั้งเดียว)</p>
+    <form id="reg" class="space-y-4">
+      <label class="block">
+        <span class="text-sm font-medium">เลขที่สมาชิก</span>
+        <input id="f-mid" inputmode="numeric" required class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-emerald-500">
+      </label>
+      <label class="block">
+        <span class="text-sm font-medium">ชื่อ-สกุล</span>
+        <input id="f-name" required class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-emerald-500" placeholder="เช่น สมชาย ใจดี">
+      </label>
+      <label class="block">
+        <span class="text-sm font-medium">สังกัด</span>
+        <input id="f-office" required class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-emerald-500">
+      </label>
+      ${bank}
+      <button class="w-full rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-[.99] text-white py-3 font-medium transition">ลงทะเบียน</button>
+    </form>`);
+  document.getElementById('reg').addEventListener('submit', async ev => {
+    ev.preventDefault();
+    const params = {
+      memberId: document.getElementById('f-mid').value.trim(),
+      name: document.getElementById('f-name').value.trim(),
+      office: document.getElementById('f-office').value.trim(),
+      bank4: state.init.requireBank ? document.getElementById('f-bank').value.trim() : ''
+    };
+    loading('กำลังตรวจสอบข้อมูล...');
+    try {
+      await api('register', params);
+      await toastOk('ลงทะเบียนสำเร็จ');
+      boot();
+    } catch (e) {
+      Swal.close();
+      if (e && e.message !== 'login') toastErr('ลงทะเบียนไม่สำเร็จ', e.message);
+    }
+  });
+}
+
+/* ---------- Member view ---------- */
+async function showMember() {
+  const { member, years } = state.init;
+  $who.textContent = `${member.name} · สมาชิกเลขที่ ${member.memberId}`;
+  if (!years.length) {
+    $app.innerHTML = card(`<p class="text-center text-slate-500 py-6">ยังไม่มีข้อมูลเงินปันผลและเฉลี่ยคืนของคุณ</p>`);
+    return;
+  }
+  state.year = state.year && years.some(y => y.year === state.year) ? state.year : years[0].year;
+  const opts = years.map(y => `<option value="${y.year}" ${y.year === state.year ? 'selected' : ''}>ปี พ.ศ. ${y.year}${y.confirmed ? ' ✓ ยืนยันแล้ว' : y.open ? ' · รอยืนยัน' : ''}</option>`).join('');
+  $app.innerHTML = `
+    <div class="bg-white rounded-2xl shadow p-4 mb-4 flex items-center gap-3">
+      <label for="year" class="text-sm font-medium shrink-0">เลือกปี</label>
+      <select id="year" class="flex-1 rounded-xl border border-slate-300 px-3 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500">${opts}</select>
+    </div>
+    <div id="detail"></div>`;
+  document.getElementById('year').addEventListener('change', e => { state.year = e.target.value; loadYear(); });
+  loadYear();
+}
+
+async function loadYear() {
+  const $d = document.getElementById('detail');
+  $d.innerHTML = card(`<p class="text-center text-slate-500 py-6">กำลังโหลด...</p>`);
+  try {
+    const d = await api('getData', { year: state.year });
+    $d.innerHTML = renderDetail(d);
+    const btn = document.getElementById('btn-confirm');
+    if (btn) btn.addEventListener('click', () => confirmYear(d));
+  } catch (e) {
+    if (e && e.message === 'login') return;
+    $d.innerHTML = card(`<p class="text-center text-slate-500 py-6">${esc(e && e.message)}</p>`);
+  }
+}
+
+const row = (label, val, cls = '') => `
+  <div class="flex items-baseline justify-between gap-3 py-2 border-b border-slate-100 last:border-0">
+    <span class="text-slate-600 text-sm sm:text-base">${esc(label)}</span>
+    <span class="font-medium tabular-nums ${cls}">${baht(val)}</span>
+  </div>`;
+
+const section = (title, color, inner) => `
+  <section class="bg-white rounded-2xl shadow p-4 sm:p-5 mb-4">
+    <h3 class="font-semibold mb-1 flex items-center gap-2"><span class="w-1.5 h-5 rounded-full ${color}"></span>${title}</h3>
+    ${inner}
+  </section>`;
+
+function renderDetail(d) {
+  const m = d.member;
+  const info = section('ข้อมูลสมาชิก', 'bg-slate-400', `
+    <dl class="text-sm sm:text-base divide-y divide-slate-100">
+      <div class="flex justify-between py-2"><dt class="text-slate-500">ชื่อ-สกุล</dt><dd class="font-medium text-right">${esc(m.name)}</dd></div>
+      <div class="flex justify-between py-2"><dt class="text-slate-500">เลขที่สมาชิก</dt><dd class="font-medium">${esc(m.memberId)}</dd></div>
+      <div class="flex justify-between py-2"><dt class="text-slate-500">สังกัด</dt><dd class="font-medium text-right">${esc(m.office)}</dd></div>
+      <div class="flex justify-between py-2"><dt class="text-slate-500">บัญชีธนาคาร</dt><dd class="font-medium tabular-nums">${esc(m.bankMasked || '-')}</dd></div>
+    </dl>`);
+
+  const income = section('รายรับ', 'bg-emerald-500',
+    d.income.map(r => row(r.label, r.value)).join('') +
+    `<div class="flex justify-between pt-3 mt-1 border-t border-slate-200 font-semibold"><span>รวมเงิน</span><span class="tabular-nums text-emerald-700">${baht(d.total)}</span></div>`);
+
+  const deduct = section('รายการหัก', 'bg-rose-500',
+    (d.deductions.length ? d.deductions.map(r => row(r.label, r.value)).join('') : `<p class="text-sm text-slate-400 py-2">ไม่มีรายการหัก</p>`) +
+    `<div class="flex justify-between pt-3 mt-1 border-t border-slate-200 font-semibold"><span>รวมหัก</span><span class="tabular-nums text-rose-600">${baht(d.totalDeduct)}</span></div>`);
+
+  const net = `
+    <section class="rounded-2xl shadow bg-gradient-to-br from-emerald-500 to-teal-600 text-white p-5 mb-4 text-center">
+      <p class="text-emerald-50 text-sm">รับสุทธิ ปี พ.ศ. ${esc(d.year)}</p>
+      <p class="text-3xl sm:text-4xl font-bold tabular-nums mt-1">฿ ${baht(d.net)}</p>
+    </section>`;
+
+  let action;
+  if (d.confirmed) {
+    action = `<div class="rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 p-4 text-center">
+      <p class="font-semibold">✓ ยืนยันข้อมูลแล้ว</p>${d.confirmedAt ? `<p class="text-sm mt-0.5">เมื่อ ${esc(d.confirmedAt)}</p>` : ''}</div>`;
+  } else if (d.open) {
+    action = `<button id="btn-confirm" class="w-full rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-[.99] text-white py-4 text-lg font-semibold shadow transition">ยืนยันข้อมูล</button>`;
+  } else {
+    action = `<div class="rounded-2xl bg-slate-200 text-slate-600 p-4 text-center text-sm">ยังไม่เปิดรับการยืนยันสำหรับปีนี้</div>`;
+  }
+  return info + income + deduct + net + action;
+}
+
+async function confirmYear(d) {
+  const r = await Swal.fire({
+    icon: 'question',
+    title: 'ยืนยันข้อมูล?',
+    html: `รับสุทธิ ปี พ.ศ. ${esc(d.year)}<br><b class="text-2xl">฿ ${baht(d.net)}</b><br><span class="text-sm text-slate-500">เมื่อยืนยันแล้วจะแก้ไขไม่ได้</span>`,
+    showCancelButton: true, confirmButtonText: 'ยืนยัน', cancelButtonText: 'ยกเลิก', confirmButtonColor: '#059669'
+  });
+  if (!r.isConfirmed) return;
+  loading('กำลังบันทึก...');
+  try {
+    await api('confirm', { year: d.year });
+    Swal.close();
+    await toastOk('ยืนยันข้อมูลเรียบร้อย');
+    state.init = await api('init');
+    showMember();
+  } catch (e) {
+    Swal.close();
+    if (e && e.message !== 'login') toastErr('ไม่สามารถยืนยันได้', e.message);
+  }
+}
+
+/* ---------- Demo mode (?demo=1) ดูหน้าตาโดยไม่ต้อง LINE/Backend — ข้อมูลสมมติ ---------- */
+const demoDb = { registered: false, confirmed: { '2568': false, '2567': true } };
+async function demoApi(action, p) {
+  await new Promise(r => setTimeout(r, 300));
+  const member = { memberId: '1234', name: 'สมชาย ใจดี', office: 'โรงเรียนตัวอย่าง' };
+  if (action === 'init') return { ok: true, registered: demoDb.registered, requireBank: false, member,
+    years: [{ year: '2568', open: true, confirmed: demoDb.confirmed['2568'] }, { year: '2567', open: false, confirmed: true }] };
+  if (action === 'register') { demoDb.registered = true; return { ok: true }; }
+  if (action === 'confirm') { demoDb.confirmed[p.year] = true; return { ok: true }; }
+  return { ok: true, year: p.year, open: p.year === '2568', confirmed: demoDb.confirmed[p.year], confirmedAt: demoDb.confirmed[p.year] ? '20/03/2568 09:41' : '',
+    member: { ...member, bankMasked: '••••4321' },
+    income: [{ label: 'สมนาคุณ', value: 500 }, { label: 'เงินปันผล 5.87%', value: 18250.5 }, { label: 'เงินเฉลี่ยคืน 17.87%', value: 4120.25 }],
+    total: 22870.75,
+    deductions: [{ label: 'ฉุกเฉิน', value: 3000 }, { label: 'เงินกู้สุขใจ', value: 5000 }, { label: 'สสธท.', value: 1200 }, { label: 'ดอกเบี้ย', value: 310.75 }],
+    totalDeduct: 9510.75, net: 13360 };
+}
+
+boot();
+</script>
+</body>
+</html>

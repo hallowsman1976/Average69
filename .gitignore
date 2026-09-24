@@ -1,0 +1,15 @@
+# clasp / เครื่องมือในเครื่อง
+.clasp.json
+.claude/
+.agents/
+skills-lock.json
+
+# โค้ดระบบเดิม (มี Sheet ID จริง) ในโฟลเดอร์ราก
+/รหัส.js
+/Code.html
+/Code2.html
+/Code3.html
+/index.html
+/indexV2.html
+/indexV3.html
+/appsscript.json
