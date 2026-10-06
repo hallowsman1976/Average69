@@ -29,11 +29,12 @@
 3. Deploy → New deployment → Web app: **Execute as: Me**, **Who has access: Anyone** → คัดลอก URL ที่ลงท้าย `/exec`
 4. แก้โค้ดภายหลังต้อง Deploy → Manage deployments → Edit → New version (ไม่เช่นนั้น URL เดิมยังเป็นโค้ดเก่า)
 
-## 4) หน้าเว็บ
-1. เปิด `web/index.html` แก้ตัวแปรบนสุด `LIFF_ID` และ `API_URL`
-2. อัปโหลดขึ้นโฮสต์ HTTPS (GitHub Pages / Netlify / Cloudflare Pages) แล้วนำ URL ไปใส่เป็น Endpoint URL ของ LIFF
-3. เปิดจาก `https://liff.line.me/<LIFF_ID>` ในแอป LINE
-4. ดูหน้าตาโดยไม่ต้องใช้ LINE: เปิด `index.html?demo=1` (ข้อมูลสมมติ ไม่เรียก backend)
+## 4) หน้าเว็บ (React 18 + Vite 5 ใน `web/`)
+1. แก้ค่า `LIFF_ID` และ `API_URL` ใน `web/src/config.js`
+2. รันในเครื่อง: `cd web` → `npm install` → `npm run dev` (ทดสอบ build: `npm run build` ได้ไฟล์ที่ `web/dist/`)
+3. Deploy: push ขึ้น `main` แล้ว GitHub Actions (`.github/workflows/pages.yml`) จะ build และขึ้น GitHub Pages ให้เอง (Settings → Pages → Source ต้องเป็น **GitHub Actions**)
+4. นำ URL ของ Pages ไปใส่เป็น Endpoint URL ของ LIFF แล้วเปิดจาก `https://liff.line.me/<LIFF_ID>` ในแอป LINE
+5. ดูหน้าตาโดยไม่ต้องใช้ LINE: เปิด `?demo=1` เช่น `http://localhost:5173/?demo=1` (ข้อมูลสมมติ ไม่เรียก backend)
 
 ## การทำงานและความปลอดภัย
 - หน้าเว็บส่ง LINE ID Token ทุกคำขอ; `doPost` ตรวจกับ LINE (aud + วันหมดอายุ) แล้วใช้ `sub` เป็น userId ที่เชื่อถือได้
