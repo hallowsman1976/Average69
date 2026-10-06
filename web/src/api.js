@@ -10,6 +10,7 @@ export class ApiError extends Error {
 }
 
 const okButton = { confirmButtonText: 'ตกลง', confirmButtonColor: '#059669' };
+const REQUEST_TIMEOUT_MS = 20000;
 
 export async function api(action, params = {}) {
   if (DEMO) return demoApi(action, params);
@@ -21,15 +22,25 @@ export async function api(action, params = {}) {
   }
 
   let res;
+  // timeout กันหน้าค้างเมื่อ Apps Script ไม่ตอบ (cold start บางครั้งใช้เวลาหลายวินาที)
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
     // text/plain = "simple request" ไม่เกิด CORS preflight (Apps Script ตอบ OPTIONS ไม่ได้)
     res = await fetch(API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({ action, idToken, ...params }),
+      signal: controller.signal,
     });
-  } catch {
-    throw new ApiError('NETWORK', 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาตรวจสอบอินเทอร์เน็ต');
+  } catch (e) {
+    const timedOut = e?.name === 'AbortError';
+    throw new ApiError(
+      timedOut ? 'TIMEOUT' : 'NETWORK',
+      timedOut ? 'เซิร์ฟเวอร์ตอบช้าเกินไป กรุณาลองใหม่อีกครั้ง' : 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาตรวจสอบอินเทอร์เน็ต',
+    );
+  } finally {
+    clearTimeout(timer);
   }
 
   const data = await res.json().catch(() => ({

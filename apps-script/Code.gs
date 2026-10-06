@@ -68,6 +68,10 @@ function actionRegister_(userId, req) {
   if (!memberId || !name || !office) {
     throw new AppError('BAD_INPUT', 'กรุณากรอกข้อมูลให้ครบถ้วน');
   }
+  // จำกัดความยาว input เพื่อกันค่าผิดปกติ/payload ใหญ่เกินจำเป็น
+  if (memberId.length > 20 || name.length > 100 || office.length > 100) {
+    throw new AppError('BAD_INPUT', 'ข้อมูลยาวเกินกำหนด กรุณาตรวจสอบอีกครั้ง');
+  }
 
   var cache = CacheService.getScriptCache();
   var failKey = 'regfail_' + userId;
@@ -386,8 +390,9 @@ function verifyIdToken_(idToken) {
   if (String(body.aud) !== String(channelId)) {
     throw new AppError('TOKEN_INVALID', 'ไม่สามารถยืนยันตัวตนกับ LINE ได้');
   }
-  var ttl = Math.max(1, Math.min(300, Number(body.exp) - Math.floor(Date.now() / 1000)));
-  cache.put(ck, body.sub, ttl);
+  // cache เฉพาะช่วงที่ token ยังไม่หมดอายุ (จำกัดสูงสุด 5 นาที) — exp ไม่ถูกต้องจะไม่ถูก cache
+  var ttl = Math.min(300, Number(body.exp) - Math.floor(Date.now() / 1000));
+  if (ttl >= 1) cache.put(ck, body.sub, Math.floor(ttl));
   return body.sub;
 }
 
