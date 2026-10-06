@@ -23,6 +23,7 @@ var REG_FAIL_WINDOW_SEC = 1800;
 /* ============================== Entry points ============================== */
 
 function doPost(e) {
+  resetMemo_();
   try {
     var req = parseBody_(e);
     var userId = verifyIdToken_(req.idToken);
@@ -129,6 +130,7 @@ function actionRegister_(userId, req) {
     row[data.map['office']] = String(found.y.vals[found.y.map['สังกัด']]);
     row[data.map['timestamp']] = new Date();
     sh.appendRow(row);
+    resetMemo_();
   } finally {
     lock.releaseLock();
   }
@@ -168,6 +170,7 @@ function actionConfirm_(userId, year) {
     sh.getRange(r, cAt + 1).setValue(new Date());
     sh.getRange(r, cBy + 1).setValue(userId);
     SpreadsheetApp.flush();
+    resetMemo_();
   } finally {
     lock.releaseLock();
   }
@@ -253,11 +256,23 @@ function findLatestMemberRow_(memberId) {
 
 /* =============================== Sheet helpers =============================== */
 
+/* Memo ระดับคำขอ: อ่านแต่ละชีตครั้งเดียวต่อ 1 คำขอ (แต่ละ RPC ไปยัง Google ใช้เวลามาก)
+ * ล้างทุกครั้งที่มีการเขียนชีต (resetMemo_) และตอนเริ่ม doPost ทุกครั้ง */
+var MEMO_ = null;
+function memo_(key, fn) {
+  if (!MEMO_) MEMO_ = {};
+  if (!(key in MEMO_)) MEMO_[key] = fn();
+  return MEMO_[key];
+}
+function resetMemo_() { MEMO_ = null; }
+
 function ss_() {
-  var id = PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');
-  var ss = id ? SpreadsheetApp.openById(id) : SpreadsheetApp.getActiveSpreadsheet();
-  if (!ss) throw new AppError('CONFIG_ERROR', 'ยังไม่ได้ตั้งค่า SPREADSHEET_ID');
-  return ss;
+  return memo_('ss', function () {
+    var id = PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');
+    var ss = id ? SpreadsheetApp.openById(id) : SpreadsheetApp.getActiveSpreadsheet();
+    if (!ss) throw new AppError('CONFIG_ERROR', 'ยังไม่ได้ตั้งค่า SPREADSHEET_ID');
+    return ss;
+  });
 }
 
 function getSheet_(name) {
@@ -266,8 +281,12 @@ function getSheet_(name) {
   return sh;
 }
 
-/** อ่านตารางทั้งชีตโดยใช้แถวแรกเป็นหัวคอลัมน์ (คีย์ตัวพิมพ์เล็ก ไม่มีช่องว่าง) */
+/** อ่านตารางทั้งชีตโดยใช้แถวแรกเป็นหัวคอลัมน์ (คีย์ตัวพิมพ์เล็ก ไม่มีช่องว่าง) — อ่านครั้งเดียวต่อคำขอ */
 function readTable_(sh) {
+  return memo_('table:' + sh.getName(), function () { return loadTable_(sh); });
+}
+
+function loadTable_(sh) {
   var lastRow = sh.getLastRow(), lastCol = sh.getLastColumn();
   if (lastCol < 1) throw new AppError('CONFIG_ERROR', 'ชีต "' + sh.getName() + '" ว่างเปล่า');
   var values = sh.getRange(1, 1, Math.max(lastRow, 1), lastCol).getValues();
@@ -309,34 +328,43 @@ function requireMember_(userId) {
 
 /** รายชื่อแท็บปี (ตัวเลข 4 หลัก) เรียงจากใหม่ไปเก่า */
 function listYearSheets_() {
-  return ss_().getSheets()
-    .map(function (s) { return s.getName(); })
-    .filter(function (n) { return /^\d{4}$/.test(n); })
-    .sort()
-    .reverse();
+  return memo_('years', function () {
+    return ss_().getSheets()
+      .map(function (s) { return s.getName(); })
+      .filter(function (n) { return /^\d{4}$/.test(n); })
+      .sort()
+      .reverse();
+  });
+}
+
+/** อ่านทั้งแท็บปีด้วยการเรียก API ครั้งเดียว (แถวแรกเป็นหัวคอลัมน์) — อ่านครั้งเดียวต่อคำขอ */
+function yearTable_(year) {
+  return memo_('year:' + year, function () {
+    var sh = ss_().getSheetByName(year);
+    if (!sh || sh.getLastRow() < 2) return null;
+    var rows = sh.getDataRange().getValues();
+    var headers = rows[0];
+    var map = {};
+    headers.forEach(function (hd, i) {
+      var k = key_(hd);
+      if (k && map[k] === undefined) map[k] = i;
+    });
+    return { sheet: sh, headers: headers, map: map, rows: rows };
+  });
 }
 
 /** อ่านแถวของสมาชิกในแท็บปี; คืน null ถ้าไม่มีแท็บหรือไม่พบสมาชิก */
 function readYear_(year, memberId) {
-  var sh = ss_().getSheetByName(year);
-  if (!sh || sh.getLastRow() < 2) return null;
-  var lastCol = sh.getLastColumn();
-  var headers = sh.getRange(1, 1, 1, lastCol).getValues()[0];
-  var map = {};
-  headers.forEach(function (hd, i) {
-    var k = key_(hd);
-    if (k && map[k] === undefined) map[k] = i;
-  });
-  var cMem = map['เลขที่สมาชิก'];
+  var t = yearTable_(year);
+  if (!t) return null;
+  var cMem = t.map['เลขที่สมาชิก'];
   if (cMem === undefined) return null;
-  var ids = sh.getRange(2, cMem + 1, sh.getLastRow() - 1, 1).getValues();
-  var rowNum = 0;
-  for (var i = 0; i < ids.length; i++) {
-    if (normId_(ids[i][0]) === memberId) { rowNum = i + 2; break; }
+  for (var i = 1; i < t.rows.length; i++) {
+    if (normId_(t.rows[i][cMem]) === memberId) {
+      return { sheet: t.sheet, headers: t.headers, map: t.map, rowNum: i + 1, vals: t.rows[i].slice() };
+    }
   }
-  if (!rowNum) return null;
-  var vals = sh.getRange(rowNum, 1, 1, lastCol).getValues()[0];
-  return { sheet: sh, headers: headers, map: map, rowNum: rowNum, vals: vals };
+  return null;
 }
 
 /** คืน index (0-based) ของคอลัมน์ที่ต้องการ ถ้าไม่มีให้เพิ่มหัวคอลัมน์ท้ายชีต */
@@ -352,15 +380,17 @@ function ensureColumn_(y, name) {
 
 /** Config: คอลัมน์ A = ปี พ.ศ., คอลัมน์ B = เปิด/ปิดรับยืนยัน */
 function readConfig_() {
-  var sh = getSheet_(SHEET_CONFIG);
-  var out = {};
-  if (sh.getLastRow() < 2) return out;
-  sh.getRange(2, 1, sh.getLastRow() - 1, 2).getValues().forEach(function (r) {
-    var y = String(r[0]).trim();
-    var s = String(r[1]).trim().toLowerCase();
-    if (/^\d{4}$/.test(y)) out[y] = ['เปิด', 'open', 'true', 'yes', 'y', '1'].indexOf(s) >= 0;
+  return memo_('config', function () {
+    var sh = getSheet_(SHEET_CONFIG);
+    var out = {};
+    if (sh.getLastRow() < 2) return out;
+    sh.getRange(2, 1, sh.getLastRow() - 1, 2).getValues().forEach(function (r) {
+      var y = String(r[0]).trim();
+      var s = String(r[1]).trim().toLowerCase();
+      if (/^\d{4}$/.test(y)) out[y] = ['เปิด', 'open', 'true', 'yes', 'y', '1'].indexOf(s) >= 0;
+    });
+    return out;
   });
-  return out;
 }
 
 /* ============================== LINE ID Token ============================== */

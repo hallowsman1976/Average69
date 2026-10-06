@@ -64,6 +64,7 @@ function t_err_(fn, code, msg) {
 }
 
 function t_reset_() {
+  resetMemo_(); // ข้อมูลในชีตอาจถูกเขียนโดยตรงจากฟังก์ชันนี้ ต้องไม่ใช้ค่าที่ cache ไว้
   var props = PropertiesService.getScriptProperties();
   props.deleteProperty('REQUIRE_BANK_LAST4');
   var form = getSheet_(SHEET_FORM);
@@ -73,6 +74,7 @@ function t_reset_() {
   var cache = CacheService.getScriptCache();
   ['Utest-A', 'Utest-B', 'Utest-C', 'Utest-D', 'Utest-E'].forEach(function (u) { cache.remove('regfail_' + u); });
   var sh = ss_().getSheetByName('2568');
+  resetMemo_();
   var y = readYear_('2568', '1001');
   if (y) {
     var cc = y.map['ยืนยัน'];
