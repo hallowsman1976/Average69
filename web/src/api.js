@@ -10,7 +10,8 @@ export class ApiError extends Error {
 }
 
 const okButton = { confirmButtonText: 'ตกลง', confirmButtonColor: '#059669' };
-const REQUEST_TIMEOUT_MS = 20000;
+// Apps Script บางครั้งใช้เวลา ~30 วินาทีตอน cold start (วัดได้ 4–28 วินาที)
+const REQUEST_TIMEOUT_MS = 60000;
 
 export async function api(action, params = {}) {
   if (DEMO) return demoApi(action, params);
@@ -22,7 +23,7 @@ export async function api(action, params = {}) {
   }
 
   let res;
-  // timeout กันหน้าค้างเมื่อ Apps Script ไม่ตอบ (cold start บางครั้งใช้เวลาหลายวินาที)
+  // timeout กันหน้าค้างเมื่อ Apps Script ไม่ตอบ
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
