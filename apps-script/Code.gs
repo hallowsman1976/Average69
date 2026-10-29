@@ -461,7 +461,10 @@ function checkYear_(year) {
 
 function key_(s) { return String(s === null || s === undefined ? '' : s).replace(/\s+/g, ''); }
 function label_(s) { return String(s).replace(/\s+/g, ' ').trim(); }
-function normId_(v) { return String(v === null || v === undefined ? '' : v).trim().replace(/\.0+$/, ''); }
+// ตัด .0 ท้าย (จากค่าตัวเลขในชีต) และเลข 0 นำหน้า เพื่อให้เทียบเลขสมาชิกได้ไม่ว่าจะเก็บแบบเติม 0 (01001) หรือไม่ (1001)
+function normId_(v) {
+  return String(v === null || v === undefined ? '' : v).trim().replace(/\.0+$/, '').replace(/^0+(?=\d)/, '');
+}
 function normText_(s) { return String(s || '').replace(/[\s​]+/g, ''); }
 function normName_(s) {
   return normText_(s).replace(/^(นางสาว|น\.ส\.|นาย|นาง|ด\.ช\.|ด\.ญ\.|ดร\.)/, '');

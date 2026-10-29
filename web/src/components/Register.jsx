@@ -7,14 +7,25 @@ const okButton = { confirmButtonText: 'ตกลง', confirmButtonColor: '#0596
 const inputCls =
   'mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-emerald-500';
 
+const MEMBER_ID_LEN = 5;
+
 export default function Register({ requireBank, onDone }) {
   const [form, setForm] = useState({ memberId: '', name: '', office: '', bank4: '' });
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
 
+  // รับเฉพาะตัวเลข จำกัดความยาว ให้พิมพ์ได้ตามจำนวนหลักจริงก่อน แล้วเติม 0 นำหน้าให้ครบตอนออกจากช่อง
+  const setMemberId = (e) => {
+    const digits = e.target.value.replace(/\D/g, '').slice(0, MEMBER_ID_LEN);
+    setForm((f) => ({ ...f, memberId: digits }));
+  };
+  const padMemberId = () => {
+    setForm((f) => (f.memberId ? { ...f, memberId: f.memberId.padStart(MEMBER_ID_LEN, '0') } : f));
+  };
+
   async function handleSubmit(e) {
     e.preventDefault();
     const params = {
-      memberId: form.memberId.trim(),
+      memberId: form.memberId.trim().padStart(MEMBER_ID_LEN, '0'),
       name: form.name.trim(),
       office: form.office.trim(),
       bank4: requireBank ? form.bank4.trim() : '',
@@ -38,7 +49,16 @@ export default function Register({ requireBank, onDone }) {
       <form onSubmit={handleSubmit} className="space-y-4">
         <label className="block">
           <span className="text-sm font-medium">เลขที่สมาชิก</span>
-          <input value={form.memberId} onChange={set('memberId')} inputMode="numeric" required className={inputCls} />
+          <input
+            value={form.memberId}
+            onChange={setMemberId}
+            onBlur={padMemberId}
+            inputMode="numeric"
+            maxLength={MEMBER_ID_LEN}
+            placeholder={'0'.repeat(MEMBER_ID_LEN)}
+            required
+            className={inputCls}
+          />
         </label>
 
         <label className="block">
