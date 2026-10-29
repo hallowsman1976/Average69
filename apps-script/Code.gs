@@ -130,6 +130,8 @@ function actionRegister_(userId, req) {
     row[data.map['office']] = String(found.y.vals[found.y.map['สังกัด']]);
     row[data.map['timestamp']] = new Date();
     sh.appendRow(row);
+    // บังคับคอลัมน์ memberID เป็นข้อความ ไม่เช่นนั้น Sheets จะตัดเลข 0 นำหน้าออก (เช่น 01001 → 1001)
+    sh.getRange(sh.getLastRow(), data.map['memberid'] + 1).setNumberFormat('@').setValue(memberId);
     resetMemo_();
   } finally {
     lock.releaseLock();
@@ -461,10 +463,10 @@ function checkYear_(year) {
 
 function key_(s) { return String(s === null || s === undefined ? '' : s).replace(/\s+/g, ''); }
 function label_(s) { return String(s).replace(/\s+/g, ' ').trim(); }
-// ตัด .0 ท้าย (จากค่าตัวเลขในชีต) และเลข 0 นำหน้า เพื่อให้เทียบเลขสมาชิกได้ไม่ว่าจะเก็บแบบเติม 0 (01001) หรือไม่ (1001)
-function normId_(v) {
-  return String(v === null || v === undefined ? '' : v).trim().replace(/\.0+$/, '').replace(/^0+(?=\d)/, '');
-}
+// ตัด .0 ท้าย (เผื่อคอลัมน์เป็นชนิดตัวเลข) — ไม่ตัดเลข 0 นำหน้า เพราะเลขที่สมาชิกในชีตเก็บแบบเติม 0 ให้ครบ 5 หลัก (เช่น 01001)
+// สำคัญ: คอลัมน์ "เลขที่สมาชิก" ในชีตปี และ "memberID" ในชีต Form ต้องตั้งรูปแบบเป็นข้อความ (Plain text)
+// ไม่เช่นนั้น Google Sheets จะตัดเลข 0 นำหน้าออกเองเมื่อพิมพ์ค่าลงไปตรงๆ
+function normId_(v) { return String(v === null || v === undefined ? '' : v).trim().replace(/\.0+$/, ''); }
 function normText_(s) { return String(s || '').replace(/[\s​]+/g, ''); }
 function normName_(s) {
   return normText_(s).replace(/^(นางสาว|น\.ส\.|นาย|นาง|ด\.ช\.|ด\.ญ\.|ดร\.)/, '');
